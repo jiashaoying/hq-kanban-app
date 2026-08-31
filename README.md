@@ -81,6 +81,10 @@ xcrun devicectl device install app --device <设备UDID> <DerivedData中的.app�
 - [新手入门指南](docs/新手入门指南.md) — 面向新手的开发调试与真机部署教程
 - [iOS 真机部署问题排查报告](docs/iOS真机部署问题排查报告.md) — 崩溃与签名问题的完整排查记录
 
+## 许可证
+
+[MIT](LICENSE) © 2026 贾少英
+
 ## 注意事项
 
 - Rust 工具链使用 rustup 版本（Homebrew cargo 缺少 iOS target）
