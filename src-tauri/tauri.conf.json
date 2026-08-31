@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/tauri/tauri.conf.json",
+  "productName": "大盘行情看板",
+  "version": "0.1.0",
+  "identifier": "com.huafu.hqkanbanapp",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "width": 900,
+        "height": 680,
+        "title": "大盘行情看板",
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "alwaysOnTop": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+          "icons/32x32.png",
+          "icons/128x128.png",
+          "icons/128x128@2x.png",
+          "icons/icon.icns",
+          "icons/icon.ico",
+          "icons/icon.png",
+          "icons/Square30x30Logo.png",
+          "icons/Square44x44Logo.png",
+          "icons/Square71x71Logo.png",
+          "icons/Square89x89Logo.png",
+          "icons/Square107x107Logo.png",
+          "icons/Square142x142Logo.png",
+          "icons/Square150x150Logo.png",
+          "icons/Square284x284Logo.png",
+          "icons/Square310x310Logo.png",
+          "icons/StoreLogo.png"
+        ],
+    "iOS": {
+      "developmentTeam": "QZ5VGE4SZ9",
+      "minimumSystemVersion": "14.0"
+    }
+  }
+}

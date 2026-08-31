@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: ""
+title: 大盘行情看板桌面应用（Tauri + Vue）
+scope:
+    - package.json
+    - tsconfig.json
+    - vite.config.ts
+    - pnpm-lock.yaml
+    - index.html
+    - ARCHITECTURE.md
+source_files: []
+depends_on: []
+related_to: []

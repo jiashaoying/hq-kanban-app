@@ -1,0 +1,43 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+nodes_managed: true
+exported_at: "2026-08-27T07:49:33Z"
+modules:
+    "":
+        dir_name: 大盘行情看板桌面应用（Tauri + Vue）
+        title: 大盘行情看板桌面应用（Tauri + Vue）
+        scope:
+            - package.json
+            - tsconfig.json
+            - vite.config.ts
+            - pnpm-lock.yaml
+            - index.html
+            - ARCHITECTURE.md
+        source_files: []
+        children:
+            - backend_tauri
+            - frontend
+        depends_on: []
+        related_to: []
+    backend_tauri:
+        dir_name: Tauri 桌面应用后端（Rust 原生层）
+        title: Tauri 桌面应用后端（Rust 原生层）
+        scope:
+            - src-tauri/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: frontend
+    frontend:
+        dir_name: Vue 前端行情看板（Tauri 桌面应用）
+        title: Vue 前端行情看板（Tauri 桌面应用）
+        scope:
+            - src/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_tauri

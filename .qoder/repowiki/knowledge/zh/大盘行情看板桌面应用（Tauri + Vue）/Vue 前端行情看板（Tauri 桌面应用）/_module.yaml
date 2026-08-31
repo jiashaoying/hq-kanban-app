@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: frontend
+title: Vue 前端行情看板（Tauri 桌面应用）
+scope:
+    - src/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_tauri
