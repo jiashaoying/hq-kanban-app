@@ -10,6 +10,25 @@ async fn fetch_indices() -> Result<Vec<market::IndexData>, String> {
     market::fetch_all_indices().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn fetch_minute_data(code: String) -> Result<market::MinuteData, String> {
+    market::fetch_minute_data(&code)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn fetch_kline_data(
+    code: String,
+    period: String,
+    count: Option<u32>,
+) -> Result<market::KlineData, String> {
+    let count = count.unwrap_or(320);
+    market::fetch_kline_data(&code, &period, count)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Set up panic hook to write to a file we can read
@@ -23,7 +42,12 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, fetch_indices])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            fetch_indices,
+            fetch_minute_data,
+            fetch_kline_data
+        ])
         .run(tauri::generate_context!());
 
     match result {

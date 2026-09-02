@@ -3,6 +3,8 @@ import type { IndexData } from '../types/market'
 import { formatPrice, formatChange, formatChangePct, formatVolume, formatAmount } from '../utils/format'
 import { computed } from 'vue'
 
+const emit = defineEmits<{ select: [data: IndexData] }>()
+
 const props = defineProps<{
   data: IndexData
 }>()
@@ -40,8 +42,9 @@ const trendBorder = computed(() => {
 
 <template>
   <div
-    class="rounded-lg border border-gray-700 border-l-4 p-4 transition-colors"
+    class="rounded-lg border border-gray-700 border-l-4 p-4 transition-colors cursor-pointer hover:border-gray-600"
     :class="[trendBg, trendBorder]"
+    @click="emit('select', props.data)"
   >
     <!-- 指数名称 -->
     <div class="text-sm text-gray-400 mb-1">{{ data.name }}</div>

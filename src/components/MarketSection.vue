@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import type { MarketGroup } from '../types/market'
+import type { MarketGroup, IndexData } from '../types/market'
 import IndexCard from './IndexCard.vue'
 
 defineProps<{ group: MarketGroup }>()
+
+const emit = defineEmits<{ select: [data: IndexData] }>()
 </script>
 
 <template>
@@ -12,7 +14,12 @@ defineProps<{ group: MarketGroup }>()
       <div class="flex-1 h-px bg-gray-700"></div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <IndexCard v-for="index in group.indices" :key="index.code" :data="index" />
+      <IndexCard
+        v-for="index in group.indices"
+        :key="index.code"
+        :data="index"
+        @select="emit('select', $event)"
+      />
     </div>
   </div>
 </template>
