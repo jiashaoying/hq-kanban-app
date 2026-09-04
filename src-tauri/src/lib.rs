@@ -1,3 +1,4 @@
+mod kline_cache;
 mod market;
 
 #[tauri::command]
@@ -19,14 +20,27 @@ async fn fetch_minute_data(code: String) -> Result<market::MinuteData, String> {
 
 #[tauri::command]
 async fn fetch_kline_data(
+    app: tauri::AppHandle,
     code: String,
     period: String,
     count: Option<u32>,
+    prefer_cache: Option<bool>,
 ) -> Result<market::KlineData, String> {
     let count = count.unwrap_or(320);
-    market::fetch_kline_data(&code, &period, count)
-        .await
-        .map_err(|e| e.to_string())
+    // AppHandle 由 Tauri 自动注入，前端 invoke 契约不变。
+    // 缓存目录获取失败等价于禁用缓存（传 None，不影响主流程）。
+    // prefer_cache 经 Tauri 2 camelCase 映射自动对应 JS 端 preferCache，
+    // 与 code/period/count 同一命名规则，无需额外处理。
+    let cache_dir = kline_cache::cache_dir(&app).ok();
+    market::fetch_kline_data(
+        &code,
+        &period,
+        count,
+        prefer_cache,
+        cache_dir.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

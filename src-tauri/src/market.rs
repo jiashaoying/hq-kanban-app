@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 #[derive(Serialize, Clone)]
@@ -117,7 +117,7 @@ pub struct MinuteData {
     pub points: Vec<MinutePoint>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct KlineBar {
     pub date: String,
     pub open: f64,
@@ -307,17 +307,86 @@ pub async fn fetch_minute_data(code: &str) -> Result<MinuteData, Box<dyn std::er
     })
 }
 
-// 拉取指数K线数据（fqkline/get 接口，UTF-8 JSON）。
+// 拉取指数K线数据（fqkline/get 接口，UTF-8 JSON）+ L2 磁盘缓存编排：
+// 新鲜缓存直接返回 → 回源拉取（成功覆盖写缓存）→ 网络失败回退陈旧缓存。
+// prefer_cache == Some(true) 为「缓存先行」模式：完成白名单校验后读磁盘缓存，
+// 存在即无论 TTL 直接返回（不发网络）；不存在返回 Err。供前端
+// 「缓存先行渲染 + 网络回来更新」两阶段加载的第一阶段使用。
 // 行字段序实测为 [日期, 开, 收, 高, 低, 量, ...附加字段]（注意是开收高低序），
 // 元素均为字符串；响应数组 key 按 qfq{period} → {period} 链式兜底（实测请求 qfq 时返回裸 period）。
 pub async fn fetch_kline_data(
     code: &str,
     period: &str,
     count: u32,
+    prefer_cache: Option<bool>,
+    cache_dir: Option<&std::path::Path>,
 ) -> Result<KlineData, Box<dyn std::error::Error>> {
     validate_code(code)?;
     validate_period(period)?;
     validate_kline_count(count)?;
+
+    // 缓存先行模式：命中即返回（无视 TTL），未命中直接 Err，全程不发网络。
+    // 缓存读放在白名单校验之后：code 会拼入缓存文件名，先校验可阻断路径穿越。
+    if matches!(prefer_cache, Some(true)) {
+        return match cache_dir.and_then(|dir| crate::kline_cache::read_cache(dir, code, period)) {
+            Some(entry) => Ok(KlineData {
+                code: entry.code,
+                period: entry.period,
+                bars: entry.bars,
+            }),
+            None => Err(format!("no cached kline: code={} period={}", code, period).into()),
+        };
+    }
+
+    // L2 缓存命中且新鲜 → 直接返回，不发网络请求。
+    if let Some(dir) = cache_dir {
+        if let Some(entry) = crate::kline_cache::read_cache(dir, code, period) {
+            if crate::kline_cache::is_fresh(&entry, crate::kline_cache::period_ttl_ms(period)) {
+                return Ok(KlineData {
+                    code: entry.code,
+                    period: entry.period,
+                    bars: entry.bars,
+                });
+            }
+        }
+    }
+
+    match fetch_kline_remote(code, period, count).await {
+        Ok(data) => {
+            // 网络成功 → 整份覆盖写缓存（原子写，失败静默不影响返回）；
+            // 35KB 级写入亚毫秒，直接同步 IO 无需 spawn_blocking，以简洁为准。
+            if let Some(dir) = cache_dir {
+                crate::kline_cache::write_cache_atomic(dir, code, period, data.bars.clone());
+            }
+            Ok(data)
+        }
+        Err(err) => {
+            // 网络失败 → 回退陈旧缓存（无论过期与否，离线/弱网可用）；无缓存保持 Err。
+            if let Some(dir) = cache_dir {
+                if let Some(entry) = crate::kline_cache::read_cache(dir, code, period) {
+                    eprintln!(
+                        "[kline_cache] 网络失败，回退陈旧缓存: code={} period={} ({})",
+                        code, period, err
+                    );
+                    return Ok(KlineData {
+                        code: entry.code,
+                        period: entry.period,
+                        bars: entry.bars,
+                    });
+                }
+            }
+            Err(err)
+        }
+    }
+}
+
+// 原有网络请求与解析逻辑整体平移至此（URL 拼接、解析零改动），
+// 由 fetch_kline_data 的缓存编排层调用，便于在 Ok/Err 分支做缓存写与陈旧回退。
+async fn fetch_kline_remote(
+    code: &str,
+    period: &str,
+    count: u32,
+) -> Result<KlineData, Box<dyn std::error::Error>> {
     let ifzq = ifzq_code(code);
     let url = format!(
         "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={},{},,,{},qfq",
