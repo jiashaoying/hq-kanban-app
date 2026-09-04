@@ -94,46 +94,74 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- 内容区 -->
-    <div v-if="loading" class="h-64 md:h-80 flex items-center justify-center">
-      <div class="text-center text-gray-500">
-        <div class="text-sm mb-1">加载中...</div>
-        <div class="text-xs">正在获取分时与K线数据</div>
-      </div>
-    </div>
-    <template v-else>
-      <!-- 分时 -->
-      <div v-if="activeTab === 'minute'" class="h-64 md:h-80">
-        <MinuteChart v-if="minuteData && minuteData.points.length >= 2" :data="minuteData" />
-        <div v-else class="h-full flex flex-col items-center justify-center text-gray-500">
-          <div class="text-sm mb-1">暂无分时数据</div>
-          <div class="text-xs">{{ error || '市场休市中或数据源暂不可用' }}</div>
+    <!-- 内容区：relative 容器在 loading 期间即渲染并稳定布局，图层挂载时
+         无同帧过渡态（clientWidth 恒可读真实值） -->
+    <div class="relative h-64 md:h-80">
+      <div v-if="loading" class="absolute inset-0 flex items-center justify-center">
+        <div class="text-center text-gray-500">
+          <div class="text-sm mb-1">加载中...</div>
+          <div class="text-xs">正在获取分时与K线数据</div>
         </div>
       </div>
-      <!-- 日/周/月K 共用 KlineChart：period 与当前 tab 匹配才渲染，避免异步切换错配 -->
-      <div v-else class="h-64 md:h-80">
-        <template v-if="klineData && klineData.period === activeTab">
-          <KlineChart v-if="klineData.bars.length > 0" :bars="klineData.bars" />
+      <template v-else>
+        <!-- 叠放布局：两图层 absolute 叠放，切 tab 仅翻转 opacity（不用 visibility /
+             display 切换），图层始终不脱离布局、盒子尺寸恒定，显隐切换不触发 RO、
+             chart 实例零重建；不加 opacity 过渡，切换即时翻转避免过渡中间态。
+             注：图表能否在隐藏层内正确绘制上屏与叠放 / opacity 无关——真正的渲染
+             保障是子组件建图后的 forceSyncPaint()（强制同步绘制以绑定 canvas 位图
+             尺寸，否则画布会停留在默认 300x150 而空白），详见 KlineChart.vue /
+             MinuteChart.vue 内注释 -->
+        <div
+          class="absolute inset-0"
+          :class="activeTab === 'minute'
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none'"
+        >
+          <MinuteChart
+            v-if="minuteData && minuteData.points.length >= 2"
+            :data="minuteData"
+            :visible="activeTab === 'minute'"
+          />
           <div v-else class="h-full flex flex-col items-center justify-center text-gray-500">
+            <div class="text-sm mb-1">暂无分时数据</div>
+            <div class="text-xs">{{ error || '市场休市中或数据源暂不可用' }}</div>
+          </div>
+        </div>
+        <!-- 日/周/月K 共用 KlineChart：day 数据到达即在隐藏层内预建图（容器
+             恒有尺寸），首次切到任一 K 线 tab 零初始化直接显示；切无缓存周期
+             时短暂显示上一周期数据，watch(bars) 数据到达后自动更新 -->
+        <div
+          class="absolute inset-0"
+          :class="activeTab !== 'minute'
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none'"
+        >
+          <KlineChart
+            v-if="klineData && klineData.bars.length > 0"
+            :bars="klineData.bars"
+            :visible="activeTab !== 'minute'"
+            :debug-tab="activeTab"
+          />
+          <div v-else-if="klineData" class="h-full flex flex-col items-center justify-center text-gray-500">
             <div class="text-sm mb-1">暂无K线数据</div>
             <div class="text-xs">{{ klineError || '数据源暂不可用' }}</div>
           </div>
-        </template>
-        <!-- 加载失败：独立于分时 error 的 klineError，支持点击重试（绕过 setPeriod 同周期 early-return） -->
-        <div v-else-if="klineError" class="h-full flex flex-col items-center justify-center text-gray-500">
-          <div class="text-sm mb-1">K线加载失败</div>
-          <div class="text-xs mb-3">{{ klineError }}</div>
-          <button
-            class="px-4 py-1.5 text-xs rounded-md border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-            @click="retryKline"
-          >
-            点击重试
-          </button>
+          <!-- 加载失败：独立于分时 error 的 klineError，支持点击重试（绕过 setPeriod 同周期 early-return） -->
+          <div v-else-if="klineError" class="h-full flex flex-col items-center justify-center text-gray-500">
+            <div class="text-sm mb-1">K线加载失败</div>
+            <div class="text-xs mb-3">{{ klineError }}</div>
+            <button
+              class="px-4 py-1.5 text-xs rounded-md border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+              @click="retryKline"
+            >
+              点击重试
+            </button>
+          </div>
+          <div v-else class="h-full flex flex-col items-center justify-center text-gray-500">
+            <div class="text-sm mb-1">K线加载中...</div>
+          </div>
         </div>
-        <div v-else class="h-full flex flex-col items-center justify-center text-gray-500">
-          <div class="text-sm mb-1">K线加载中...</div>
-        </div>
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
 </template>
