@@ -18,7 +18,7 @@ pub struct IndexData {
     pub update_time: String,
 }
 
-const INDEX_CODES: &str = "sh000001,sz399001,sz399006,sh000300,sh000016,sh000905,r_hkHSI,r_hkHSTECH,r_us.DJI,r_us.IXIC,r_us.INX";
+const INDEX_CODES: &str = "sh000001,sz399001,sz399006,sh000300,sh000680,sh000016,sh000905,r_hkHSI,r_hkHSTECH,r_us.DJI,r_us.IXIC,r_us.INX";
 
 fn parse_f64(s: &str) -> f64 {
     if s.is_empty() {
