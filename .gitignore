@@ -12,6 +12,10 @@ dist/
 # Xcode / iOS 构建产物
 src-tauri/gen/apple/Externals/
 src-tauri/gen/apple/build/
+# assets 由 deploy-ios.sh 从 dist 同步而来，属构建产物；目录本身需存在（Xcode Resources 引用）
+src-tauri/gen/apple/assets/*
+!src-tauri/gen/apple/assets/.gitkeep
+.deploy-logs/
 *.xcuserdatad/
 *.xcuserdata/
 DerivedData/

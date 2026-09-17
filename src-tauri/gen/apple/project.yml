@@ -1,8 +1,10 @@
 name: hq-kanban-app
 options:
   bundleIdPrefix: com.huafu.hqkanbanapp
+  # iOS 26+ (TN3187) 要求最低部署目标 ≥ 15.0，维持 14.0 会在启动时触发
+  # UIKit 运行时告警并与 Scene 生命周期适配冲突。改这里（不要直接改 pbxproj）。
   deploymentTarget:
-    iOS: 14.0
+    iOS: 15.0
 fileGroups: [../../src]
 configs:
   debug: debug
@@ -55,6 +57,16 @@ targets:
         CFBundleVersion: "0.1.0"
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        # iOS 26+ (TN3187) 强制 UIScene 生命周期：缺失时 UIKit 在 UIApplicationMain 内抛出
+        # Runtime Issue 并触发 EXC_BREAKPOINT/SIGTRAP，表现为启动即闪退。
+        # UIApplicationSupportsMultipleScenes 必须为 true，否则 tao 不会调用 setWindowScene，
+        # UIWindow 挂不到 windowScene 上 → 黑屏。名称需与 tao 的 TaoSceneDelegate 一致。
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: TaoScene
+                UISceneDelegateClassName: TaoSceneDelegate
     entitlements:
       path: hq-kanban-app_iOS/hq-kanban-app_iOS.entitlements
     scheme:

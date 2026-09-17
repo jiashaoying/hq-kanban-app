@@ -43,15 +43,26 @@ async fn fetch_kline_data(
     .map_err(|e| e.to_string())
 }
 
+// 落盘诊断日志。真机沙盒中 /tmp 与 /var/mobile/Containers/Data/Application 均不可写，
+// 只有 $HOME/Documents 可用，且能被 Xcode「Devices and Simulators → 下载容器」导出。
+// stderr 由 Tauri 的 log_stdout() 转发到设备控制台，devicectl --console 可直接看到。
+fn persist_log(name: &str, msg: &str) {
+    if let Ok(home) = std::env::var("HOME") {
+        let dir = std::path::PathBuf::from(home).join("Documents");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join(name), msg);
+    }
+    let _ = std::fs::write(std::path::Path::new("/tmp").join(name), msg);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Set up panic hook to write to a file we can read
+    // 注意：mobile_entry_point 展开出的 stop_unwind 会在捕获 panic 后调用 abort()，
+    // 因此 iOS 上任何 panic 都表现为「闪退」，日志是唯一的定位依据。
     std::panic::set_hook(Box::new(|info| {
         let msg = format!("PANIC: {}\n", info);
         eprintln!("{}", msg);
-        // Try to write to simulator's shared directory
-        let _ = std::fs::write("/tmp/tauri_panic.log", &msg);
-        let _ = std::fs::write("/var/mobile/Containers/Data/Application/tauri_panic.log", &msg);
+        persist_log("tauri_panic.log", &msg);
     }));
 
     let result = tauri::Builder::default()
@@ -69,7 +80,7 @@ pub fn run() {
         Err(e) => {
             let msg = format!("TAURI_APP_ERROR: {:?}\n", e);
             eprintln!("{}", msg);
-            let _ = std::fs::write("/tmp/tauri_error.log", &msg);
+            persist_log("tauri_error.log", &msg);
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
     }

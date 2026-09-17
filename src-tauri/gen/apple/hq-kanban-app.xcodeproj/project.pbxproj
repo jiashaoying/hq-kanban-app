@@ -42,6 +42,7 @@
 		E77EE72D6E3868B7A9BC77C5 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EA4D8ABF3E5D09BD38F85DA7 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		EAD37291E95DA39E33E9428A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		F0BDD798796AF042D7BDD1EF /* kline_cache.rs */ = {isa = PBXFileReference; path = kline_cache.rs; sourceTree = "<group>"; };
 		F4F54ED8973BF2958A9C1B74 /* market.rs */ = {isa = PBXFileReference; path = market.rs; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -76,6 +77,7 @@
 		25A788D3BFE54DA3D0046990 /* src */ = {
 			isa = PBXGroup;
 			children = (
+				F0BDD798796AF042D7BDD1EF /* kline_cache.rs */,
 				2664A81D14E4CF3893E91A12 /* lib.rs */,
 				E5A5043306342F31BB447238 /* main.rs */,
 				F4F54ED8973BF2958A9C1B74 /* market.rs */,
@@ -304,7 +306,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -425,7 +427,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
