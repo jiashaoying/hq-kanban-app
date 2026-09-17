@@ -24,7 +24,8 @@
 ├── src-tauri/            # Rust 后端
 │   ├── src/market.rs     #   行情抓取与解析
 │   ├── tauri.conf.json   #   Tauri 配置
-│   └── patches/wry-0.55.1/  # wry 补丁（修复 iOS 26+ NSBundle 崩溃）
+│   ├── patches/wry-0.55.1/  # wry 补丁（修复 iOS 26+ NSBundle 崩溃）
+│   └── patches/tao-0.35.3/  # tao 补丁（修复 iOS Scene 配置悬垂指针崩溃）
 ├── docs/                 # 文档（部署报告 / 命令手册 / 新手指南）
 └── dist/                 # 前端构建产物（构建生成）
 ```
@@ -90,3 +91,5 @@ xcrun devicectl device install app --device <设备UDID> <DerivedData中的.app�
 - Rust 工具链使用 rustup 版本（Homebrew cargo 缺少 iOS target）
 - 修改 `src-tauri/gen/apple/project.yml` 后必须执行 `xcodegen generate`
 - 签名配置（Bundle ID `com.huafu.hqkanbanapp` / Team `QZ5VGE4SZ9`）在 `tauri.conf.json` 与 `project.yml` 中需保持一致
+- `patches/` 下为上游依赖的本地补丁（wry / tao），改动 `Cargo.toml` 的 `[patch.crates-io]` 后需重新编译
+- iOS 真机闪退排查：拉取设备崩溃报告 `xcrun devicectl device copy from --domain-type systemCrashLogs`（比 `--console` 可靠）

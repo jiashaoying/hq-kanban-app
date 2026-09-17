@@ -2,13 +2,13 @@
 
 **项目**：大盘行情看板（Tauri v2 + Vue 3）
 **目标设备**：iPhone 17 Pro Max（iOS 27.0）
-**日期**：2026-08-31
+**日期**：2026-08-31 ~ 2026-09-17
 
 ---
 
 ## 一、问题总览
 
-应用在 iOS 模拟器和真机上均无法正常运行，经历了四个阶段的问题排查与修复：
+应用在 iOS 模拟器和真机上均无法正常运行，经历了七个阶段的问题排查与修复：
 
 | 阶段 | 问题 | 表现 | 状态 |
 |---|---|---|---|
@@ -16,6 +16,10 @@
 | 2 | 代码签名配置错误 | EXC_BAD_ACCESS 崩溃 / 签名失败 | ✅ 已解决 |
 | 3 | 静态库误打包进 app bundle | dyld4 加载阶段崩溃 | ✅ 已解决 |
 | 4 | 生产构建仍连接开发服务器 | 报 `localhost:1420` 连接错误 | ✅ 已解决 |
+| 5 | 真机闪退无任何可用日志 | 无从定位，只能靠猜 | ✅ 已解决 |
+| 6 | iOS 26+ 未采用 UIScene 生命周期 | 启动即闪退（Runtime Issue） | ✅ 已解决 |
+| 7 | tao Scene 配置悬垂指针 | 启动 SIGSEGV（`objc_retain` 野指针） | ✅ 已解决 |
+
 
 ---
 
@@ -130,6 +134,198 @@ strings libapp.a | grep -c "local network permissions"
 
 ---
 
+## 二之二、阶段 5：真机闪退的定位（日志采集）
+
+> 2026-09-16：执行 `scripts/deploy-ios.sh` 后真机闪退。静态检查已排除签名 / dyld / dev 模式 / wry 补丁 / 资源嵌入等问题，必须靠运行时日志定位。
+
+### 关键机制：iOS 上 Rust panic 就是闪退
+
+`#[cfg_attr(mobile, tauri::mobile_entry_point)]` 展开后包含：
+
+```rust
+fn stop_unwind<F: FnOnce() -> T, T>(f: F) -> T {
+  match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+    Ok(t) => t,
+    Err(err) => {
+      eprintln!("attempt to unwind out of `rust` with err: {:?}", err);
+      std::process::abort()
+    }
+  }
+}
+```
+
+桌面端 panic 只打印堆栈；iOS 端会直接 `abort()`，表现为**无任何 UI 提示的闪退**。
+
+### 日志获取（三步）
+
+1. `lib.rs` 的 panic hook 已改为写入 `$HOME/Documents/tauri_panic.log` —— 真机沙盒内唯一可写、且能被 Xcode「Devices and Simulators → 下载容器」导出的位置。原实现的 `/tmp` 与 `/var/mobile/Containers/Data/Application/` 在真机上均不可写，等于拿不到任何信息。
+2. 部署脚本第 7 步改为 `--console` 启动并采集 12 秒日志到 `.deploy-logs/ios-launch-*.log`，自动摘取 `panic` / `unwind` / `abort` / `EXC_` 等关键字。`CONSOLE_SECONDS=30 ./scripts/deploy-ios.sh` 可延长采集时长。
+3. 手工复现：`xcrun devicectl device process launch --console --device <UDID> com.huafu.hqkanbanapp`。
+
+### 顺带补上的两个 CLI 缺失步骤
+
+脚本直接调 `xcodebuild`，绕开了 Tauri CLI，因此补了两步：
+
+| 步骤 | 说明 |
+|---|---|
+| 同步 `dist` → `gen/apple/assets` | CLI 会把 frontendDist 复制到该目录供 Xcode Resources 打包；脚本原先缺失，该目录恒为空 |
+| dist 较新时 `touch src-tauri/src/lib.rs` | `generate_context!` 是 proc macro，cargo 监听不到 dist 变化，否则前端改动不会进入 `EmbeddedAssets`（表现为「改了前端但真机还是旧页面」） |
+
+### 已排除项
+
+| 检查项 | 判据 |
+|---|---|
+| production 模式 | `strings libapp.a \| grep -c "local network permissions"` = 0 |
+| 签名 / profile | `codesign -dv` → `TeamIdentifier=QZ5VGE4SZ9`，profile 有效期至 2027-08-28 |
+| dyld / 静态库误打包 | app bundle 内无 `libapp.a`，`otool -L` 依赖正常 |
+| wry NSBundle 崩溃补丁 | `patches/wry-0.55.1` 生效，iOS 分支走 `NSProcessInfo` |
+| 前端资源嵌入 | 4 个 chunk 均在 `EmbeddedAssets` 中 |
+| opener 插件 Swift 实现 | `OpenerPlugin.swift.o` 已链接进主二进制 |
+
+---
+
+## 二之三、阶段 6：iOS 26+ UIScene 生命周期闪退（根因）
+
+> 2026-09-17：日志采集就位后复现启动崩溃，控制台关键字落到 UIKit 而非 Rust panic —— `TaoSceneDelegate` 相关 + `EXC_BREAKPOINT (SIGTRAP)`。
+
+### 现象
+
+`get_market_data` 前的 UI 初始化阶段就退出，且 App 进程先出现 `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption` 运行时告警，随后 `SIGTRAP`。
+
+### 根因
+
+Apple 在 iOS 26 收紧了 **TN3187**：App 必须采用 UIScene 生命周期，未声明 `UIApplicationSceneManifest` 的 App 会在 `UIApplicationMain` 内被判为 Runtime Issue 并直接中止进程。
+
+### 修复（`Info.plist`）
+
+```xml
+<key>UIApplicationSceneManifest</key>
+<dict>
+  <key>UIApplicationSupportsMultipleScenes</key>
+  <true/>
+  <key>UISceneConfigurations</key>
+  <dict>
+    <key>UIWindowSceneSessionRoleApplication</key>
+    <array>
+      <dict>
+        <key>UISceneConfigurationName</key><string>TaoScene</string>
+        <key>UISceneDelegateClassName</key><string>TaoSceneDelegate</string>
+      </dict>
+    </array>
+  </dict>
+</dict>
+```
+
+### 两个容易踩空的点
+
+1. **`UIApplicationSupportsMultipleScenes` 必须为 `true`**：tao 的窗口创建流程（tao `view.rs::create_window_device`）以此开关决定是否调用 `setWindowScene`。置 `false` 时 `UIWindow` 永远挂不上 windowScene，Scene 环境下窗口不显示 —— 不再闪退，但变成**黑屏**。置 `true` 后 tao 会检测到设备实际不支持多场景，转把窗口挂到 main scene，行为正确。
+2. **配置名 / delegate 类名要与 tao 对齐**：`TaoScene` / `TaoSceneDelegate`，写错则 Scene 创建失败，症状同样是闪退。
+
+### 部署目标同步提到 iOS 15.0
+
+`IPHONEOS_DEPLOYMENT_TARGET` 由 14.0 → 15.0：14.0 与 Scene 生命周期适配冲突，且与 TN3187 要求的最低基线不符。
+
+### 改动必须落在 `project.yml`
+
+`Info.plist` 与 `pbxproj` 都是 xcodegen 的生成物，直接改会被下一次 `xcodegen generate` 覆盖。已把两处改到真源：
+
+| 改动 | 位置 |
+|---|---|
+| `deploymentTarget.iOS: 15.0` | `src-tauri/gen/apple/project.yml` → `options` |
+| `UIApplicationSceneManifest` | `project.yml` → `targets.hq-kanban-app_iOS.info.properties` |
+
+改完执行 `(cd src-tauri/gen/apple && xcodegen generate)` 并复核生成物：
+
+```bash
+grep -n "IPHONEOS_DEPLOYMENT_TARGET" hq-kanban-app.xcodeproj/project.pbxproj   # 应为 15.0
+plutil -p hq-kanban-app_iOS/Info.plist | grep -A8 UIApplicationSceneManifest   # 键值齐备、无重复
+```
+
+> 顺带发现：`src/kline_cache.rs` 早已加入仓库，但工程未重新生成，pbxproj 内缺其文件引用。本次 `xcodegen generate` 已一并补齐。
+
+---
+
+## 二之四、阶段 7：SIGSEGV 根因 —— tao Scene 配置悬垂指针
+
+> 2026-09-17：Scene Manifest 生效后闪退依旧，但异常类型已从 `EXC_BREAKPOINT` 变为 `EXC_BAD_ACCESS / SIGSEGV`。最终靠**设备崩溃报告**定位到 tao 的所有权 bug。
+
+### 取证：绕开 `--console`，直接拉设备崩溃报告
+
+`devicectl device process launch --console` 对「main 之前就崩溃、且无 stderr 输出」的场景基本无用（只回一行 `App terminated due to signal 11`）。`devicectl` 其实能直接取设备上的系统崩溃日志：
+
+```bash
+# 拉取 systemCrashLogs 域（含已符号化的 .ips 崩溃报告）
+mkdir -p /tmp/ios-crash
+xcrun devicectl device copy from \
+  --device <UDID> --domain-type systemCrashLogs \
+  --source . --destination /tmp/ios-crash
+ls -t /tmp/ios-crash/*.ips
+
+# 解析（第一行是 header，其余是格式化 JSON 正文）
+python3 -c "
+import json
+raw=open('/tmp/ios-crash/大盘行情看板-2026-09-17-105531.ips',encoding='utf-8').read()
+i=raw.index('\n{'); d=json.loads(raw[i+1:])
+print(d['exception'])
+for t in d['threads']:
+    if t.get('triggered'):
+        [print('  ',f['imageName'],f['symbol']) for f in t['frames'][:10]]
+"
+```
+
+同类命令：`--domain-type appDataContainer --domain-identifier com.huafu.hqkanbanapp` 可导出 App 沙盒（`Documents/tauri_panic.log` 即从这里取）。
+
+### 崩溃报告给出的结论
+
+```
+exception: EXC_BAD_ACCESS (SIGSEGV)  KERN_INVALID_ADDRESS
+  0  objc_retain
+  1  -[UIApplication _connectUISceneFromFBSScene:transitionContext:]
+  2  -[UIApplication workspace:didCreateScene:withTransitionContext:completion:]
+  ...
+  9  UIApplicationMain
+  0  tao::platform_impl::platform::event_loop::EventLoop::run
+```
+
+崩溃点在 UIKit 内部 `objc_retain` 一个无效地址 —— 典型「对象已释放却被 retain」。而 `_connectUISceneFromFBSScene:` 恰好是 UIKit 读取 **UISceneConfiguration** 并实例化 Scene delegate 的地方。
+
+### 根因：tao 0.35.3 归还了已释放的 SceneConfiguration
+
+`tao-0.35.3/src/platform_impl/ios/view.rs::configuration_for_connecting_scene_session`（`application:configurationForConnectingSceneSession:options:` 的 IMP）：
+
+```rust
+let config = UISceneConfiguration::configurationWithName_sessionRole(...);  // +1
+config.setDelegateClass(Some(super::scene::TaoSceneDelegate::class()));
+Retained::as_ptr(&config) as _   // ← 只借指针，函数返回时 Retained drop → release → 对象销毁
+```
+
+`Retained::as_ptr` 是**借用**，不转移所有权；函数返回后 `config` 被释放，UIKit 拿到悬垂指针，随后 `objc_retain` 即 SIGSEGV。delegate 方法返回值是按 +0 约定，正确写法是交给 autorelease pool：
+
+```rust
+Retained::autorelease_return(config) as _
+```
+
+### 修复：以 patch 方式改 tao
+
+```toml
+# src-tauri/Cargo.toml
+[patch.crates-io]
+wry = { path = "patches/wry-0.55.1" }
+tao = { path = "patches/tao-0.35.3" }   # 新增
+```
+
+改完后必须 `cargo build` 重编 tao（path patch 会改写 `Cargo.lock` 的 source）。
+
+### 验证（三项证据）
+
+| 证据 | 结果 |
+|---|---|
+| 启动后 30s 未被系统终止 | 控制台只出现脚本 `kill` 导致的 `signal 15`，不再有 `signal 11` |
+| 手动 launch + 截图 | `devicectl device capture screenshot` 显示行情卡片正常渲染（非黑屏） |
+| 再拉崩溃报告 | 11:11 安装新版本后无新增 `.ips` |
+
+---
+
 ## 三、经验总结
 
 ### 关键教训
@@ -141,6 +337,12 @@ strings libapp.a | grep -c "local network permissions"
 3. **feature 变更必须清缓存**：cargo feature 变更不会自动触发全量重编译验证，排查此类问题时先 `cargo clean` 排除缓存干扰。
 
 4. **真机 ≠ 模拟器**：真机上 `localhost` 指向设备自身，dev 模式必须依赖 Mac 局域网 IP 或直接使用 Release 构建；同时真机必须处理代码签名链（Team → 证书 → Profile → Bundle ID）。
+
+5. **崩溃报告比 console 日志可靠得多**：`devicectl device copy from --domain-type systemCrashLogs` 拉回的 `.ips` 是已符号化的完整堆栈，能把「启动闪退」直接定位到具体函数。反观 `--console`，对 main 之前崩溃、且无 stderr 输出的场景只给一行 `signal 11`。**排查 iOS 闪退的第一步就该是拉崩溃报告**。
+
+6. **objc2 的所有权必须显式区分**：`Retained::as_ptr`（借用，函数返回即失效）与 `Retained::autorelease_return`（+0 返回值交 autorelease pool）语义完全不同。把 `as_ptr` 当返回值用，等于把已释放对象交给系统 —— 症状是随机的 `objc_retain` / `objc_release` 野指针崩溃，且极难从日志反推。
+
+7. **上游依赖的坑要有能力自己补**：`patches/wry-0.55.1`、`patches/tao-0.35.3` 两个补丁都是上游在 iOS 新系统上未适配的问题。升级依赖后需复核补丁是否仍必要（见「遗留注意事项」）。
 
 ### 最终构建命令（真机 Release 部署）
 
@@ -156,8 +358,12 @@ xcrun devicectl device install app --device <设备UDID> <DerivedData中的.app�
 xcrun devicectl device process launch --device <设备UDID> com.huafu.hqkanbanapp
 ```
 
+> 上述全流程已封装为 `./scripts/deploy-ios.sh`（含 dist 同步、EmbeddedAssets 强制重建、production 校验、控制台日志采集）。
+
 ### 遗留注意事项
 
 - wry patch（`patches/wry-0.55.1`）是针对 0.55.1 的临时方案，升级 wry 后需确认官方是否已修复 iOS 26+ 的 NSBundle 崩溃问题
+- tao patch（`patches/tao-0.35.3`）修复 `configuration_for_connecting_scene_session` 的悬垂指针，升级 tao 后需确认上游是否已改用 `autorelease_return`
+- tao 中仍存在用裸指针存 `UIWindow` 的写法（`window.rs` 的 `From<Retained<UIWindow>> for WindowId`），当前未观察到问题，后续若出现窗口相关的悬垂访问可从这里查
 - `tauri.conf.json`、`project.yml`、`project.pbxproj` 三处签名/Bundle ID 配置需保持一致，xcodegen 重新生成后以 yml 为准
 - IPA 导出（`pnpm tauri ios build --export-method debugging`）可用于分发测试，但项目使用自定义 preBuildScript 时需确保 feature 标志已同步
