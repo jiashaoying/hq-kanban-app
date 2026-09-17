@@ -34,3 +34,7 @@ Thumbs.db
 .env
 .env.*
 *.log
+
+# cargo registry 解包残留（源码手改补丁目录内不需要）
+src-tauri/patches/*/.cargo-ok
+src-tauri/patches/*/.cargo_vcs_info.json
